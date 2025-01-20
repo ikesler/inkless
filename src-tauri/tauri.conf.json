@@ -19,7 +19,10 @@
           "color": [0, 0, 0, 0],
           "radius": 10,
           "state": "active"
-        }
+        },
+        "browserExtensionsEnabled": false,
+        "center": true,
+        "incognito": true
       }
     ],
     "security": {
