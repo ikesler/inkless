@@ -13,6 +13,119 @@ let timer, timer2;
 let activeFile = 'untitled.txt';
 let fontSize = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--font-size'));
 
+const fileName = 'data.inkfmt';
+const saveTimers = {};
+
+async function saveData(key, value) {
+  const filePath = `./${fileName}`;
+  let data = {};
+
+  try {
+    const content = await fs.readTextFile(filePath);
+    data = parseInkfmt(content);
+  } catch (e) {}
+
+  if (saveTimers[key]) {
+    clearTimeout(saveTimers[key]);
+  }
+
+  saveTimers[key] = setTimeout(async () => {
+    if (key.includes('.')) {
+      const [mainKey, subKey] = key.split('.');
+      data[mainKey] = data[mainKey] || {};
+      data[mainKey][subKey] = value;
+    } else {
+      data[key] = value;
+    }
+
+    const formatted = serializeInkfmt(data);
+    await fs.writeTextFile(filePath, formatted);
+
+    delete saveTimers[key];
+  }, 500);
+}
+
+async function getData(key) {
+  const filePath = `./${fileName}`;
+  try {
+    const content = await fs.readTextFile(filePath);
+    const data = parseInkfmt(content);
+
+    if (key.includes('.')) {
+      const [mainKey, subKey] = key.split('.');
+      return data[mainKey]?.[subKey] || null;
+    }
+
+    return data[key] || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function getAll() {
+  const filePath = `./${fileName}`;
+  try {
+    const content = await fs.readTextFile(filePath);
+    return parseInkfmt(content);
+  } catch (e) {
+    return {};
+  }
+}
+
+function parseInkfmt(content) {
+  const lines = content.split('\n');
+  const data = {};
+  let currentSection = null;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      currentSection = trimmed.slice(1, -1);
+      const parts = currentSection.split('.');
+      let ref = data;
+      for (const part of parts) {
+        ref[part] = ref[part] || {};
+        ref = ref[part];
+      }
+    } else {
+      const [key, ...rest] = trimmed.split('=');
+      const value = rest.join('=').trim();
+      if (currentSection) {
+        const parts = currentSection.split('.');
+        let ref = data;
+        for (const part of parts) {
+          ref = ref[part];
+        }
+        ref[key.trim()] = value.replace(/\\n/g, '\n');
+      } else {
+        data[key.trim()] = value.replace(/\\n/g, '\n');
+      }
+    }
+  }
+
+  return data;
+}
+
+function serializeInkfmt(data) {
+  function serialize(obj, prefix = '') {
+    let result = '';
+    for (const [key, value] of Object.entries(obj)) {
+      if (typeof value === 'object' && !Array.isArray(value)) {
+        const sectionName = prefix ? `${prefix}.${key}` : key;
+        result += `[${sectionName}]\n${serialize(value, sectionName)}`;
+      } else {
+        const serializedValue = typeof value === 'string' ? value.replace(/\n/g, '\\n') : value;
+        result += `${key} = ${serializedValue}\n`;
+      }
+    }
+    return result;
+  }
+
+  return serialize(data);
+}
+
 // Utility
 
 function makeEditor(div) {
@@ -254,7 +367,7 @@ editor.addEventListener('input', () => {
   }, 2000);
 });
 
-// Handle theme
+// Handle theme and settings
 
 function getOSTheme() {
   if (window.matchMedia) {
@@ -277,6 +390,29 @@ if (getOSTheme() == 'dark') {
 } else {
   document.documentElement.classList.remove('dark');
 }
+
+(async () => {
+  const data = await getAll();
+
+  if (data.theme && data.theme != 'light') {
+    document.documentElement.classList.add(data.theme);
+  }
+
+  if (data.glow && data.glow == 'true') {
+    document.documentElement.classList.add('glow');
+  }
+
+  if (data.dynamic_glow && data.dynamic_glow == 'true') {
+    dynamicGlow = true;
+  }
+
+  if (data.code_mode && data.code_mode == "true") {
+    codeMode = true;
+    setTitle();
+    document.documentElement.classList.add('mono');
+    updateEditor();
+  }
+})();
 
 // Shortcuts
 
@@ -309,11 +445,14 @@ document.addEventListener('keydown', async (event) => {
     if (document.documentElement.classList.contains('dark')) {
       document.documentElement.classList.remove('dark');
       document.documentElement.classList.add('mica');
+      saveData('theme', 'mica');
     } else if (document.documentElement.classList.contains('mica')) {
       document.documentElement.classList.remove('mica');
       document.documentElement.classList.add('dark');
+      saveData('theme', 'dark');
     } else {
       document.documentElement.classList.add('mica');
+      saveData('theme', 'mica');
     }
   }
 
@@ -321,8 +460,10 @@ document.addEventListener('keydown', async (event) => {
     event.preventDefault();
     if (document.documentElement.classList.contains('glow')) {
       document.documentElement.classList.remove('glow');
+      saveData('glow', 'false');
     } else {
       document.documentElement.classList.add('glow');
+      saveData('glow', 'true');
     }
   }
 
@@ -331,10 +472,13 @@ document.addEventListener('keydown', async (event) => {
     if (document.documentElement.classList.contains('mica')) {
       document.documentElement.classList.remove('mica');
       document.documentElement.classList.add('dark');
+      saveData('theme', 'dark');
     } else if (document.documentElement.classList.contains('dark')) {
       document.documentElement.classList.remove('dark');
+      saveData('theme', 'light');
     } else {
       document.documentElement.classList.add('mica');
+      saveData('theme', 'mica');
     }
   }
 
@@ -354,15 +498,6 @@ document.addEventListener('keydown', async (event) => {
     } else {
       const gridOverlay = document.createElement('div');
       gridOverlay.className = 'grid-overlay';
-      gridOverlay.style.position = 'fixed';
-      gridOverlay.style.top = '0';
-      gridOverlay.style.left = '0';
-      gridOverlay.style.width = '100%';
-      gridOverlay.style.height = '100%';
-      gridOverlay.style.pointerEvents = 'none';
-      gridOverlay.style.zIndex = '-1';
-      gridOverlay.style.opacity = '0.3';
-      gridOverlay.style.backgroundImage = 'repeating-linear-gradient(0deg, transparent, transparent 19px, var(--footer-color) 20px), repeating-linear-gradient(90deg, transparent, transparent 19px, var(--footer-color) 20px)';
       document.body.appendChild(gridOverlay);
     }
   }
@@ -400,11 +535,13 @@ document.addEventListener('keydown', async (event) => {
       codeMode = false;
       setTitle();
       document.documentElement.classList.remove('mono');
+      saveData('code_mode', 'false');
     } else {
       codeMode = true;
       setTitle();
       document.documentElement.classList.add('mono');
       updateEditor();
+      saveData('code_mode', 'true');
     }
   }
 
@@ -419,11 +556,13 @@ document.addEventListener('keydown', async (event) => {
       dynamicGlow = false;
       setTitle();
       document.documentElement.classList.remove('glow');
+      saveData('dynamic_glow', 'false');
     } else {
       dynamicGlow = true;
       setTitle();
       document.documentElement.classList.add('glow');
       updateEditor();
+      saveData('dynamic_glow', 'true');
     }
   }
 });

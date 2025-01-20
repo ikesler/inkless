@@ -107,6 +107,21 @@ div[contenteditable] {
   }
 }
 
+/* Grid */
+
+.grid-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: -1;
+  opacity: 0.3;
+  background: repeating-linear-gradient(0deg, transparent, transparent 19px, var(--footer-color) 20px), repeating-linear-gradient(90deg, transparent, transparent 19px, var(--footer-color) 20px);
+  height: calc(var(--height) + 2 * var(--padding));
+}
+
 /* Footer */
 
 footer {

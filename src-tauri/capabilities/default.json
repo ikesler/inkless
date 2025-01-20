@@ -61,6 +61,15 @@
     "fs:allow-write-text-file",
     "fs:write-all",
     "fs:write-files",
-    "core:window:allow-set-title"
+    "fs:read-all",
+    "core:window:allow-set-title",
+    {
+      "identifier": "fs:write-all",
+      "allow": [{ "path": "**" }, { "path": "**/*" }]
+    },
+    {
+      "identifier": "fs:read-all",
+      "allow": [{ "path": "**" }, { "path": "**/*" }]
+    }
   ]
 }
