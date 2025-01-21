@@ -12,9 +12,35 @@
 
 ## ❓ About
 
-Inkless is a minimal, lightweight (less than 4 MB), shortcut-based text editor. It doesn't include any fancy features like code blocks or tables. You can use Inkless for writing notes or coding with the code mode (CTRL + SHIFT + C). Anything you paste is automatically converted to plain text.
+Inkless is a minimal, lightweight (less than 4 MB), shortcut-based text editor. You can use it for writing notes or coding (CTRL + SHIFT + C). Anything you paste is automatically converted to plain text.
 
 If you write and close the app without saving, it won't nag you to save before closing. This is intentionally done to make it easier to create session notes. There will be a `*` symbol beside the filename in the titlebar if you have unsaved changes. And, if code mode or dynamic glow is enabled, it will mention that in the titlebar.
+
+Inkless also supports extensions. Settings and extensions are stored in a file called `data.inkfmt` (located in same directory as executable). Extensions are written in JavaScript and have full access to all web features. To add an extension, add this to the file:
+
+```
+ext.EXTENSION_NAME = ---
+console.log("Hello world");
+---
+```
+
+Example data file with settings and extensions:
+
+```
+theme = mica
+code_mode = true
+glow = true
+
+ext.consolelog = ---
+console.log("hello!");
+---
+
+ext.anotherone = ---
+if (5 > 4) {
+    alert("5 is greater than 4.");
+}
+---
+```
 
 Donations are really appreciated and would help in the improvement of the project! https://www.patreon.com/axorax
 

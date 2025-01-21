@@ -22,23 +22,84 @@ async function saveData(key, value) {
 
   try {
     const content = await fs.readTextFile(filePath);
-    data = parseInkfmt(content);
+    const lines = content.split('\n');
+    let currentSection = null;
+    let multiLineKey = null;
+    let multiLineValue = [];
+    data = {};
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+
+      if (multiLineKey) {
+        if (trimmed === '---') {
+          const parts = multiLineKey.split('.');
+          let ref = data;
+          for (let i = 0; i < parts.length; i++) {
+            const part = parts[i];
+            if (i === parts.length - 1) ref[part] = multiLineValue.join('\n');
+            else {
+              if (!ref[part] || typeof ref[part] !== 'object') ref[part] = {};
+              ref = ref[part];
+            }
+          }
+          multiLineKey = null;
+          multiLineValue = [];
+        } else {
+          multiLineValue.push(trimmed);
+        }
+        continue;
+      }
+
+      const [k, ...rest] = trimmed.split('=');
+      const val = rest.join('=').trim();
+
+      if (val === '---') {
+        multiLineKey = k.trim();
+        multiLineValue = [];
+      } else {
+        const parts = k.trim().split('.');
+        let ref = data;
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i];
+          if (i === parts.length - 1) ref[part] = val;
+          else {
+            if (!ref[part] || typeof ref[part] !== 'object') ref[part] = {};
+            ref = ref[part];
+          }
+        }
+      }
+    }
   } catch (e) {}
 
-  if (saveTimers[key]) {
-    clearTimeout(saveTimers[key]);
-  }
+  if (saveTimers[key]) clearTimeout(saveTimers[key]);
 
   saveTimers[key] = setTimeout(async () => {
-    if (key.includes('.')) {
-      const [mainKey, subKey] = key.split('.');
-      data[mainKey] = data[mainKey] || {};
-      data[mainKey][subKey] = value;
-    } else {
-      data[key] = value;
+    const parts = key.split('.');
+    let ref = data;
+
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (i === parts.length - 1) ref[part] = value.includes('\n') ? value : value.trim();
+      else {
+        if (!ref[part] || typeof ref[part] !== 'object') ref[part] = {};
+        ref = ref[part];
+      }
     }
 
-    const formatted = serializeInkfmt(data);
+    function serialize(obj, prefix = '') {
+      let result = '';
+      for (const [key, val] of Object.entries(obj)) {
+        const fullKey = prefix ? `${prefix}.${key}` : key;
+        if (typeof val === 'object' && !Array.isArray(val)) result += serialize(val, fullKey);
+        else if (typeof val === 'string' && val.includes('\n')) result += `${fullKey} = ---\n${val}\n---\n`;
+        else result += `${fullKey} = ${val}\n`;
+      }
+      return result;
+    }
+
+    const formatted = serialize(data);
     await fs.writeTextFile(filePath, formatted);
 
     delete saveTimers[key];
@@ -49,14 +110,65 @@ async function getData(key) {
   const filePath = `./${fileName}`;
   try {
     const content = await fs.readTextFile(filePath);
-    const data = parseInkfmt(content);
+    const lines = content.split('\n');
+    let currentSection = null;
+    let multiLineKey = null;
+    let multiLineValue = [];
+    const data = {};
 
-    if (key.includes('.')) {
-      const [mainKey, subKey] = key.split('.');
-      return data[mainKey]?.[subKey] || null;
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+
+      if (multiLineKey) {
+        if (trimmed === '---') {
+          const parts = multiLineKey.split('.');
+          let ref = data;
+          for (let i = 0; i < parts.length; i++) {
+            const part = parts[i];
+            if (i === parts.length - 1) ref[part] = multiLineValue.join('\n');
+            else {
+              if (!ref[part] || typeof ref[part] !== 'object') ref[part] = {};
+              ref = ref[part];
+            }
+          }
+          multiLineKey = null;
+          multiLineValue = [];
+        } else {
+          multiLineValue.push(trimmed);
+        }
+        continue;
+      }
+
+      const [k, ...rest] = trimmed.split('=');
+      const val = rest.join('=').trim();
+
+      if (val === '---') {
+        multiLineKey = k.trim();
+        multiLineValue = [];
+      } else {
+        const parts = k.trim().split('.');
+        let ref = data;
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i];
+          if (i === parts.length - 1) ref[part] = val;
+          else {
+            if (!ref[part] || typeof ref[part] !== 'object') ref[part] = {};
+            ref = ref[part];
+          }
+        }
+      }
     }
 
-    return data[key] || null;
+    const parts = key.split('.');
+    let ref = data;
+
+    for (const part of parts) {
+      if (ref[part] === undefined) return null;
+      ref = ref[part];
+    }
+
+    return ref.startsWith('---') && ref.endsWith('---') ? ref.slice(3, -3).trim() : ref;
   } catch (e) {
     return null;
   }
@@ -66,64 +178,60 @@ async function getAll() {
   const filePath = `./${fileName}`;
   try {
     const content = await fs.readTextFile(filePath);
-    return parseInkfmt(content);
+    const lines = content.split('\n');
+    let currentSection = null;
+    let multiLineKey = null;
+    let multiLineValue = [];
+    const data = {};
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+
+      if (multiLineKey) {
+        if (trimmed === '---') {
+          const parts = multiLineKey.split('.');
+          let ref = data;
+          for (let i = 0; i < parts.length; i++) {
+            const part = parts[i];
+            if (i === parts.length - 1) ref[part] = multiLineValue.join('\n');
+            else {
+              if (!ref[part] || typeof ref[part] !== 'object') ref[part] = {};
+              ref = ref[part];
+            }
+          }
+          multiLineKey = null;
+          multiLineValue = [];
+        } else {
+          multiLineValue.push(trimmed);
+        }
+        continue;
+      }
+
+      const [k, ...rest] = trimmed.split('=');
+      const val = rest.join('=').trim();
+
+      if (val === '---') {
+        multiLineKey = k.trim();
+        multiLineValue = [];
+      } else {
+        const parts = k.trim().split('.');
+        let ref = data;
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i];
+          if (i === parts.length - 1) ref[part] = val;
+          else {
+            if (!ref[part] || typeof ref[part] !== 'object') ref[part] = {};
+            ref = ref[part];
+          }
+        }
+      }
+    }
+
+    return data;
   } catch (e) {
     return {};
   }
-}
-
-function parseInkfmt(content) {
-  const lines = content.split('\n');
-  const data = {};
-  let currentSection = null;
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-
-    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
-      currentSection = trimmed.slice(1, -1);
-      const parts = currentSection.split('.');
-      let ref = data;
-      for (const part of parts) {
-        ref[part] = ref[part] || {};
-        ref = ref[part];
-      }
-    } else {
-      const [key, ...rest] = trimmed.split('=');
-      const value = rest.join('=').trim();
-      if (currentSection) {
-        const parts = currentSection.split('.');
-        let ref = data;
-        for (const part of parts) {
-          ref = ref[part];
-        }
-        ref[key.trim()] = value.replace(/\\n/g, '\n');
-      } else {
-        data[key.trim()] = value.replace(/\\n/g, '\n');
-      }
-    }
-  }
-
-  return data;
-}
-
-function serializeInkfmt(data) {
-  function serialize(obj, prefix = '') {
-    let result = '';
-    for (const [key, value] of Object.entries(obj)) {
-      if (typeof value === 'object' && !Array.isArray(value)) {
-        const sectionName = prefix ? `${prefix}.${key}` : key;
-        result += `[${sectionName}]\n${serialize(value, sectionName)}`;
-      } else {
-        const serializedValue = typeof value === 'string' ? value.replace(/\n/g, '\\n') : value;
-        result += `${key} = ${serializedValue}\n`;
-      }
-    }
-    return result;
-  }
-
-  return serialize(data);
 }
 
 // Utility
@@ -245,6 +353,51 @@ function setTitle() {
 setTitle();
 makeEditor(document.querySelector('div[contenteditable]'));
 
+// Handle settings and extensions
+
+function getOSTheme() {
+  if (window.matchMedia) {
+    const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    return isDarkMode ? 'dark' : 'light';
+  }
+  return 'light';
+}
+
+(async () => {
+  const data = await getAll();
+
+  if (data.theme) {
+    document.documentElement.classList.add(data.theme);
+  } else {
+    if (getOSTheme() == 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }
+
+  if (data.glow && data.glow == 'true') {
+    document.documentElement.classList.add('glow');
+  }
+
+  if (data.dynamic_glow && data.dynamic_glow == 'true') {
+    dynamicGlow = true;
+  }
+
+  if (data.code_mode && data.code_mode == "true") {
+    codeMode = true;
+    setTitle();
+    document.documentElement.classList.add('mono');
+    updateEditor();
+  }
+
+  if (data.ext) {
+    Object.keys(data.ext).forEach(key => {
+      eval(data.ext[key]);
+    });
+  }
+})();
+
 // Placeholder
 
 const updatePlaceholder = () => {
@@ -282,76 +435,80 @@ const updateDisplay = (selector, count, label) => {
 updateInfo();
 
 function updateEditor() {
-  if (codeMode) {
-    const e = document.querySelector('div[contenteditable]');
-    const selection = window.getSelection();
-    const range = selection.getRangeAt(0);
-    const clonedRange = range.cloneRange();
-    clonedRange.selectNodeContents(e);
-    clonedRange.setEnd(range.endContainer, range.endOffset);
-    const cursorPosition = clonedRange.toString().length;
-
-    const createRange = (node, targetPosition) => {
-      let range = document.createRange();
-      range.selectNode(node);
-      range.setStart(node, 0);
-      let pos = 0;
-      const stack = [node];
-      while (stack.length > 0) {
-        const current = stack.pop();
-        if (current.nodeType === Node.TEXT_NODE) {
-          const len = current.textContent.length;
-          if (pos + len >= targetPosition) {
-            range.setEnd(current, targetPosition - pos);
-            return range;
-          }
-          pos += len;
-        } else if (current.childNodes && current.childNodes.length > 0) {
-          for (let i = current.childNodes.length - 1; i >= 0; i--) {
-            stack.push(current.childNodes[i]);
+  try {
+    if (codeMode) {
+      const e = document.querySelector('div[contenteditable]');
+      const selection = window.getSelection();
+      const range = selection.getRangeAt(0);
+      const clonedRange = range.cloneRange();
+      clonedRange.selectNodeContents(e);
+      clonedRange.setEnd(range.endContainer, range.endOffset);
+      const cursorPosition = clonedRange.toString().length;
+  
+      const createRange = (node, targetPosition) => {
+        let range = document.createRange();
+        range.selectNode(node);
+        range.setStart(node, 0);
+        let pos = 0;
+        const stack = [node];
+        while (stack.length > 0) {
+          const current = stack.pop();
+          if (current.nodeType === Node.TEXT_NODE) {
+            const len = current.textContent.length;
+            if (pos + len >= targetPosition) {
+              range.setEnd(current, targetPosition - pos);
+              return range;
+            }
+            pos += len;
+          } else if (current.childNodes && current.childNodes.length > 0) {
+            for (let i = current.childNodes.length - 1; i >= 0; i--) {
+              stack.push(current.childNodes[i]);
+            }
           }
         }
-      }
-      range.setEnd(node, node.childNodes.length);
-      return range;
-    };
-
-    const setPosition = (targetPosition) => {
-      const range = createRange(e, targetPosition);
-      const selection = window.getSelection();
-      selection.removeAllRanges();
-      selection.addRange(range);
-    };
-
-    e.querySelectorAll('div').forEach((d) => {
-      if (d.textContent.replaceAll(' ', '') == '') {
-        return;
-      }
-      try {
-        delete d.dataset.highlighted;
-        d.className = '';
-      } catch (_) {}
-      hljs.highlightElement(d);
-    });
-
-    if (dynamicGlow) {
-      e.querySelectorAll('& span').forEach((d) => {
-        d.style.setProperty('--glow', window.getComputedStyle(d).color);
+        range.setEnd(node, node.childNodes.length);
+        return range;
+      };
+  
+      const setPosition = (targetPosition) => {
+        const range = createRange(e, targetPosition);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+      };
+  
+      e.querySelectorAll('div').forEach((d) => {
+        if (d.textContent.replaceAll(' ', '') == '') {
+          return;
+        }
+        try {
+          delete d.dataset.highlighted;
+          d.className = '';
+        } catch (_) {}
+        hljs.highlightElement(d);
       });
+  
+      if (dynamicGlow) {
+        e.querySelectorAll('& span').forEach((d) => {
+          d.style.setProperty('--glow', window.getComputedStyle(d).color);
+        });
+      }
+  
+      setPosition(cursorPosition);
+  
+      console.clear();
+  
+      const selection2 = window.getSelection();
+      const range2 = selection.getRangeAt(0);
+      const cursorPositionElement = range2.endContainer;
+      selection2.removeAllRanges();
+      const newRange = document.createRange();
+      newRange.setStart(cursorPositionElement, range2.endOffset);
+      newRange.setEnd(cursorPositionElement, range2.endOffset);
+      selection2.addRange(newRange);
     }
-
-    setPosition(cursorPosition);
-
-    console.clear();
-
-    const selection2 = window.getSelection();
-    const range2 = selection.getRangeAt(0);
-    const cursorPositionElement = range2.endContainer;
-    selection2.removeAllRanges();
-    const newRange = document.createRange();
-    newRange.setStart(cursorPositionElement, range2.endOffset);
-    newRange.setEnd(cursorPositionElement, range2.endOffset);
-    selection2.addRange(newRange);
+  } catch (e) {
+    console.error(e);
   }
 }
 
@@ -365,217 +522,6 @@ editor.addEventListener('input', () => {
   timer2 = setTimeout(() => {
     updateEditor();
   }, 2000);
-});
-
-// Handle theme and settings
-
-function getOSTheme() {
-  if (window.matchMedia) {
-    const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    return isDarkMode ? 'dark' : 'light';
-  }
-  return 'light';
-}
-
-window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (event) => {
-  if (event.matches) {
-    document.documentElement.classList.add('dark');
-  } else {
-    document.documentElement.classList.remove('dark');
-  }
-});
-
-if (getOSTheme() == 'dark') {
-  document.documentElement.classList.add('dark');
-} else {
-  document.documentElement.classList.remove('dark');
-}
-
-(async () => {
-  const data = await getAll();
-
-  if (data.theme && data.theme != 'light') {
-    document.documentElement.classList.add(data.theme);
-  }
-
-  if (data.glow && data.glow == 'true') {
-    document.documentElement.classList.add('glow');
-  }
-
-  if (data.dynamic_glow && data.dynamic_glow == 'true') {
-    dynamicGlow = true;
-  }
-
-  if (data.code_mode && data.code_mode == "true") {
-    codeMode = true;
-    setTitle();
-    document.documentElement.classList.add('mono');
-    updateEditor();
-  }
-})();
-
-// Shortcuts
-
-document.addEventListener('keydown', async (event) => {
-  const isCmdOrCtrl = event.ctrlKey || event.metaKey;
-  if (isCmdOrCtrl && event.key === 's') {
-    event.preventDefault();
-    const text = editor.innerText.trim();
-    if (text) {
-      if (activeFilePath) {
-        await fs.writeTextFile(activeFilePath, text);
-      } else {
-        const filePath = await dialog.save({
-          defaultPath: 'untitled.txt',
-          filters: [{ name: 'Text Files', extensions: ['txt'] }],
-        });
-        if (filePath) {
-          activeFilePath = filePath;
-          activeFile = await path.basename(filePath);
-          await fs.writeTextFile(filePath, text);
-        }
-      }
-      saved = true;
-      setTitle();
-    }
-  }
-
-  if (isCmdOrCtrl && event.key === 'm') {
-    event.preventDefault();
-    if (document.documentElement.classList.contains('dark')) {
-      document.documentElement.classList.remove('dark');
-      document.documentElement.classList.add('mica');
-      saveData('theme', 'mica');
-    } else if (document.documentElement.classList.contains('mica')) {
-      document.documentElement.classList.remove('mica');
-      document.documentElement.classList.add('dark');
-      saveData('theme', 'dark');
-    } else {
-      document.documentElement.classList.add('mica');
-      saveData('theme', 'mica');
-    }
-  }
-
-  if (isCmdOrCtrl && event.key === 'n') {
-    event.preventDefault();
-    if (document.documentElement.classList.contains('glow')) {
-      document.documentElement.classList.remove('glow');
-      saveData('glow', 'false');
-    } else {
-      document.documentElement.classList.add('glow');
-      saveData('glow', 'true');
-    }
-  }
-
-  if (isCmdOrCtrl && event.key === 't') {
-    event.preventDefault();
-    if (document.documentElement.classList.contains('mica')) {
-      document.documentElement.classList.remove('mica');
-      document.documentElement.classList.add('dark');
-      saveData('theme', 'dark');
-    } else if (document.documentElement.classList.contains('dark')) {
-      document.documentElement.classList.remove('dark');
-      saveData('theme', 'light');
-    } else {
-      document.documentElement.classList.add('mica');
-      saveData('theme', 'mica');
-    }
-  }
-
-  if (isCmdOrCtrl && event.key === 'w') {
-    event.preventDefault();
-    const footer = document.querySelector('footer');
-    if (footer) {
-      footer.style.display = footer.style.display === 'none' ? '' : 'none';
-    }
-  }
-
-  if (isCmdOrCtrl && event.key === 'g') {
-    event.preventDefault();
-    const existingGrid = document.querySelector('.grid-overlay');
-    if (existingGrid) {
-      existingGrid.remove();
-    } else {
-      const gridOverlay = document.createElement('div');
-      gridOverlay.className = 'grid-overlay';
-      document.body.appendChild(gridOverlay);
-    }
-  }
-
-  if (isCmdOrCtrl && event.key === 'o') {
-    event.preventDefault();
-    const filePath = await dialog.open({
-      filters: [{ name: 'Text Files', extensions: ['*'] }],
-    });
-    if (filePath) {
-      activeFilePath = filePath;
-      activeFile = await path.basename(filePath);
-      saved = true;
-      const fileContent = await fs.readTextFile(filePath);
-      editor.innerText = fileContent;
-      setTitle();
-      editor.removeAttribute('placeholder');
-    }
-  }
-
-  if (isCmdOrCtrl && event.key === 'e') {
-    event.preventDefault();
-    const spellcheck = editor.getAttribute('spellcheck') === 'true';
-    editor.setAttribute('spellcheck', !spellcheck);
-  }
-
-  if (isCmdOrCtrl && event.key === 'p') {
-    event.preventDefault();
-    window.print();
-  }
-
-  if (isCmdOrCtrl && event.shiftKey && event.key === 'C') {
-    event.preventDefault();
-    if (codeMode) {
-      codeMode = false;
-      setTitle();
-      document.documentElement.classList.remove('mono');
-      saveData('code_mode', 'false');
-    } else {
-      codeMode = true;
-      setTitle();
-      document.documentElement.classList.add('mono');
-      updateEditor();
-      saveData('code_mode', 'true');
-    }
-  }
-
-  if (isCmdOrCtrl && event.key === 'r') {
-    event.preventDefault();
-    window.location.reload();
-  }
-
-  if (isCmdOrCtrl && event.shiftKey && event.key === 'N') {
-    event.preventDefault();
-    if (dynamicGlow) {
-      dynamicGlow = false;
-      setTitle();
-      document.documentElement.classList.remove('glow');
-      saveData('dynamic_glow', 'false');
-    } else {
-      dynamicGlow = true;
-      setTitle();
-      document.documentElement.classList.add('glow');
-      updateEditor();
-      saveData('dynamic_glow', 'true');
-    }
-  }
-});
-
-document.addEventListener('wheel', (event) => {
-  if (event.ctrlKey || event.metaKey) {
-    if (event.deltaY < 0) {
-      fontSize += 5;
-    } else if (event.deltaY > 0 && fontSize > 15) {
-      fontSize -= 5;
-    }
-    document.documentElement.style.setProperty('--font-size', `${fontSize}px`);
-  }
 });
 
 // Footer scroll
